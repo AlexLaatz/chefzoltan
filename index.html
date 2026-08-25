@@ -31,8 +31,9 @@
 <main>
   <div class="toolbar">
     <div class="search-wrap">
-      <input id="search" type="text" placeholder="Search recipes or ingredients…" />
+      <input id="search" type="text" placeholder="Search recipes or ingredients…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="searchSuggestions" aria-autocomplete="list" />
       <button id="searchClear" class="search-clear-btn" type="button" aria-label="Clear search" style="display:none;">&times;</button>
+      <ul id="searchSuggestions" class="search-suggestions" role="listbox"></ul>
     </div>
     <div class="filters" id="filters"></div>
     <div class="toolbar-actions">
@@ -541,6 +542,23 @@ const RECIPES = [  { title: "Burgers", category: "Entrees",
       "Eat the wurst slices with a toothpick and dip the fries into the sauce."
     ],
     notes: "Optional balsamic and apple cider vinegar can be stirred in with the soy sauce and curry powder for extra tang. Calorie estimate assumes 8 standard bratwurst links plus the ketchup-based curry sauce, split across 4 servings (2 wursts' worth of meat and sauce per serving) - doesn't include the fries. Actual bratwurst brand/fat content will shift this."
+  },
+  { title: "Buffalo Chicken Mac", category: "Entrees",
+    time: "~10 min", calories: "~560 cal (est.) per 400g serving",
+    image: "image/buffalo.jpeg",
+    ingredients: [
+      "1 whole Vons Signature Select warm rotisserie chicken, shredded (~18-20 oz usable meat)",
+      "1 tray Reser's Main St. Bistro Family Size Mac & Cheese, 28 oz",
+      "Frank's RedHot buffalo sauce, about 1/3 of a 12 fl oz bottle"
+    ],
+    steps: [
+      "Shred the rotisserie chicken.",
+      "Mix the shredded chicken with the buffalo sauce.",
+      "Microwave the mac and cheese according to the package.",
+      "Add the mac and cheese to the buffalo chicken.",
+      "Mix until combined."
+    ],
+    notes: "Switched from the Vons Signature Select 12oz mac and cheese tray to Reser's Main St. Bistro Family Size, 28 oz, about 45% cheaper per ounce and made with whole milk, real cheddar, parmesan, and romano. Target ratio is roughly 60% mac to 40% chicken by weight, a bit more mac and less chicken than the original version, since a chicken-heavy batch felt too heavy on chicken. A whole rotisserie chicken (about 850g bone-in, 18-20 oz usable meat) pairs well with one 28 oz Reser's tray to land near that ratio. Calorie estimate is based on a blended rate of about 1.4 cal/gram and 0.12g protein/gram across the full batch (mac, chicken, and buffalo sauce together), scaled to a 400g serving, about 48g protein. Actual calories will shift with how much chicken meat you get off your specific bird and how much sauce you use."
   },
   { title: "Smash Tacos", category: "Entrees",
     time: "~20 min", calories: "~395 cal (est.) per taco, makes 10",
@@ -1348,28 +1366,6 @@ const RECIPES = [  { title: "Burgers", category: "Entrees",
     ],
     notes: "42g (1 sauce cup) is 80 cal; 3 sauce cups (126g) is 240 cal."
   },
-  { title: "In-N-Out Spread Sauce", category: "Sauces/Extras",
-    time: "5 min",
-    calories: "~17 cal (est.) per 12g serving (about 1 In-N-Out spread packet)",
-    macros: { protein: 0, carbs: 2, fat: 1 },
-    image: "image/smashtaco.jpeg",
-    ingredients: [
-      "114g ketchup",
-      "86g light mayo",
-      "11g American mustard",
-      "36ml water",
-      "Optional: pickle juice, to taste",
-      "Optional: sautéed onion, finely chopped, mixed in"
-    ],
-    steps: [
-      "Combine the ketchup, light mayo, and American mustard in a bowl.",
-      "Add the water and mix well.",
-      "Add pickle juice to taste, if using.",
-      "Stir in finely chopped sautéed onion, if using.",
-      "Mix until fully combined and smooth."
-    ],
-    notes: "Pulled from the Smash Tacos recipe's sauce, sized as a standalone batch. The full batch (114g ketchup + 86g light mayo + 11g mustard + 36ml water, ~247g total) makes about 20 servings sized to match a single In-N-Out spread packet (~12g each). Calorie estimate is per 12g serving, based on the ketchup/light-mayo/mustard ratio; actual calories depend on your specific mayo and ketchup brands."
-  },
 ];
 
 /* ============================================
@@ -1841,6 +1837,45 @@ function renderChecklist(items, checkedArr, kind){
   `).join('');
 }
 
+// ============================================
+// INGREDIENT CHECKLIST WITH PER-ITEM EDITABLE QUANTITY
+// ------------------------------------------------
+// Like renderChecklist, but for any ingredient whose leading amount
+// parseLeadingQuantity can read, the quantity itself is rendered as its
+// own clickable span. Clicking it swaps in a small text input; typing a
+// number and confirming recomputes the recipe's overall scale so THAT
+// ingredient lands on the typed amount, and every other ingredient moves
+// with it (same underlying state.scale the slider drives, just derived
+// from one ingredient's value instead of a raw multiplier).
+// ============================================
+
+function renderIngredientChecklist(originalItems, checkedArr, scale){
+  return originalItems.map((originalText, i) => {
+    const parsed = parseLeadingQuantity(originalText);
+    if(!parsed){
+      // Not a scalable quantity (e.g. "Salt, to taste") - render plain, same as before
+      return `
+        <li class="check-item ${checkedArr[i] ? 'checked' : ''}" data-kind="ingredients" data-i="${i}" tabindex="0" role="checkbox" aria-checked="${checkedArr[i]}">
+          <span class="check-box" aria-hidden="true"></span>
+          <span class="check-text">${originalText}</span>
+        </li>
+      `;
+    }
+    const scaledText = scaleIngredientText(originalText, scale);
+    const scaledParsed = parseLeadingQuantity(scaledText);
+    const qtyDisplay = scaledParsed ? scaledText.slice(0, scaledParsed.matchedLength) : formatScaledQuantity(parsed.value * scale);
+    const rest = scaledParsed ? scaledText.slice(scaledParsed.matchedLength) : scaledText.slice(parsed.matchedLength);
+    return `
+      <li class="check-item ingredient-item ${checkedArr[i] ? 'checked' : ''}" data-kind="ingredients" data-i="${i}" tabindex="0" role="checkbox" aria-checked="${checkedArr[i]}">
+        <span class="check-box" aria-hidden="true"></span>
+        <span class="check-text">
+          <span class="ingredient-qty" data-i="${i}" data-original-value="${parsed.value}" tabindex="0" role="button" aria-label="Edit amount, currently ${qtyDisplay.trim()}" title="Click to set this amount">${qtyDisplay}</span><span class="ingredient-rest">${rest}</span>
+        </span>
+      </li>
+    `;
+  }).join('');
+}
+
 function renderStepChecklist(items, checkedArr){
   return items.map((text, i) => `
     <li class="check-item ${checkedArr[i] ? 'checked' : ''}" data-kind="steps" data-i="${i}" tabindex="0" role="checkbox" aria-checked="${checkedArr[i]}">
@@ -1929,7 +1964,7 @@ function openDetail(idx, triggerEl){
       <div class="detail-columns">
         <div>
           <h4>Ingredients</h4>
-          <ul class="check-list" id="ingredientList">${renderChecklist(r.ingredients.map(t => scaleIngredientText(t, state.scale)), state.ingredients, 'ingredients')}</ul>
+          <ul class="check-list" id="ingredientList">${renderIngredientChecklist(r.ingredients, state.ingredients, state.scale)}</ul>
         </div>
         <div>
           <h4>Steps</h4>
@@ -1962,8 +1997,12 @@ function openDetail(idx, triggerEl){
   };
 
   detail.querySelectorAll('.check-item').forEach(el => {
-    el.addEventListener('click', () => toggleItem(el));
+    el.addEventListener('click', (e) => {
+      if(e.target.closest('.ingredient-qty')) return; // handled by bindQtyEditors instead
+      toggleItem(el);
+    });
     el.addEventListener('keydown', (e) => {
+      if(e.target.closest('.ingredient-qty')) return;
       if(e.key === 'Enter' || e.key === ' '){
         e.preventDefault();
         toggleItem(el);
@@ -1971,19 +2010,72 @@ function openDetail(idx, triggerEl){
     });
   });
 
+  const SCALE_MIN = 0.25;
+  const SCALE_MAX = 4;
+
+  // Recomputes state.scale so that a single ingredient's typed amount becomes
+  // the new target, then re-renders everything the same way the slider does -
+  // every other ingredient, the scale control, and calories/macros all move
+  // together from that one number.
+  const commitIngredientQty = (originalValue, typedRaw) => {
+    const n = parseFloat(String(typedRaw).trim());
+    if(Number.isNaN(n) || n <= 0 || originalValue <= 0){
+      rerenderIngredients(false); // invalid entry: just redraw as-is, no change
+      return;
+    }
+    const newScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, n / originalValue));
+    state.scale = newScale;
+    if(scaleSlider) scaleSlider.value = state.scale;
+    rerenderIngredients(true);
+  };
+
+  function bindQtyEditors(list){
+    list.querySelectorAll('.ingredient-qty').forEach(qtyEl => {
+      const startEdit = () => {
+        if(qtyEl.querySelector('input')) return; // already editing
+        const originalValue = Number(qtyEl.dataset.originalValue);
+        const currentText = qtyEl.textContent;
+        qtyEl.dataset.prevText = currentText;
+        qtyEl.innerHTML = `<input type="text" inputmode="decimal" class="ingredient-qty-input" value="${currentText.trim()}">`;
+        const input = qtyEl.querySelector('input');
+        input.focus();
+        input.select();
+        const finish = (commit) => {
+          if(commit) commitIngredientQty(originalValue, input.value);
+          else rerenderIngredients(false);
+        };
+        input.addEventListener('keydown', (e) => {
+          if(e.key === 'Enter'){ e.preventDefault(); finish(true); }
+          else if(e.key === 'Escape'){ e.preventDefault(); finish(false); }
+        });
+        input.addEventListener('blur', () => finish(true));
+        input.addEventListener('click', (e) => e.stopPropagation());
+      };
+      qtyEl.addEventListener('click', (e) => { e.stopPropagation(); startEdit(); });
+      qtyEl.addEventListener('keydown', (e) => {
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.stopPropagation(); startEdit(); }
+      });
+    });
+  }
+
   const rerenderIngredients = (pulse) => {
     const list = document.getElementById('ingredientList');
     if(list){
-      list.innerHTML = renderChecklist(r.ingredients.map(t => scaleIngredientText(t, state.scale)), state.ingredients, 'ingredients');
+      list.innerHTML = renderIngredientChecklist(r.ingredients, state.ingredients, state.scale);
       list.querySelectorAll('.check-item').forEach(el => {
-        el.addEventListener('click', () => toggleItem(el));
+        el.addEventListener('click', (e) => {
+          if(e.target.closest('.ingredient-qty')) return;
+          toggleItem(el);
+        });
         el.addEventListener('keydown', (e) => {
+          if(e.target.closest('.ingredient-qty')) return;
           if(e.key === 'Enter' || e.key === ' '){
             e.preventDefault();
             toggleItem(el);
           }
         });
       });
+      bindQtyEditors(list);
       // Briefly highlight the quantities so it's visually obvious they just
       // updated. Only when the scale actually changed (pulse=true) - not on
       // every ingredient check/uncheck, which also calls this indirectly
@@ -1996,8 +2088,7 @@ function openDetail(idx, triggerEl){
     renderDetailMeta(idx);
   };
 
-  const SCALE_MIN = 0.25;
-  const SCALE_MAX = 4;
+  bindQtyEditors(detail);
 
   const scaleSlider = document.getElementById('scaleSlider');
   const scaleValueInput = document.getElementById('scaleValue');
@@ -2178,14 +2269,140 @@ const searchClearBtn = document.getElementById('searchClear');
 function updateSearchClearVisibility(){
   searchClearBtn.style.display = search.value ? 'flex' : 'none';
 }
+
+// ============================================
+// SEARCH SUGGESTIONS - live dropdown of matching
+// recipe titles as the user types, click/Enter to
+// jump straight into that recipe's detail view.
+// ------------------------------------------------
+// Matches on title only (not ingredients/steps/notes)
+// so the dropdown stays a fast "jump to recipe" list
+// rather than a second copy of the full-text search
+// the grid below already does.
+// ============================================
+
+const searchSuggestions = document.getElementById('searchSuggestions');
+const MAX_SUGGESTIONS = 6;
+let activeSuggestionIndex = -1;
+let currentSuggestions = [];
+
+function getSuggestions(query){
+  if(!query) return [];
+  const q = query.toLowerCase();
+  return RECIPES
+    .map((r, idx) => ({ r, idx }))
+    .filter(({ r }) => r.title.toLowerCase().includes(q))
+    // Titles that start with the query rank above titles that merely contain it
+    .sort((a, b) => {
+      const aStarts = a.r.title.toLowerCase().startsWith(q) ? 0 : 1;
+      const bStarts = b.r.title.toLowerCase().startsWith(q) ? 0 : 1;
+      if(aStarts !== bStarts) return aStarts - bStarts;
+      return a.r.title.localeCompare(b.r.title);
+    })
+    .slice(0, MAX_SUGGESTIONS);
+}
+
+function highlightMatch(title, query){
+  const i = title.toLowerCase().indexOf(query.toLowerCase());
+  if(i === -1) return title;
+  return title.slice(0, i) + '<mark>' + title.slice(i, i + query.length) + '</mark>' + title.slice(i + query.length);
+}
+
+function renderSuggestions(){
+  const query = search.value.trim();
+  currentSuggestions = getSuggestions(query);
+  activeSuggestionIndex = -1;
+  if(currentSuggestions.length === 0){
+    closeSuggestions();
+    return;
+  }
+  searchSuggestions.innerHTML = currentSuggestions.map(({ r, idx }, i) => `
+    <li class="suggestion-item" id="suggestion-${i}" data-idx="${idx}" role="option" aria-selected="false">
+      <span class="suggestion-title">${highlightMatch(r.title, query)}</span>
+      <span class="suggestion-cat">${r.category}</span>
+    </li>
+  `).join('');
+  searchSuggestions.querySelectorAll('.suggestion-item').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      // mousedown (not click) so this fires before the input's blur closes the list
+      e.preventDefault();
+      jumpToSuggestion(Number(el.dataset.idx));
+    });
+  });
+  openSuggestions();
+}
+
+function openSuggestions(){
+  searchSuggestions.classList.add('open');
+  search.setAttribute('aria-expanded', 'true');
+}
+function closeSuggestions(){
+  searchSuggestions.classList.remove('open');
+  searchSuggestions.innerHTML = '';
+  search.setAttribute('aria-expanded', 'false');
+  search.removeAttribute('aria-activedescendant');
+  activeSuggestionIndex = -1;
+  currentSuggestions = [];
+}
+
+function jumpToSuggestion(recipeIdx){
+  closeSuggestions();
+  search.value = '';
+  updateSearchClearVisibility();
+  renderGrid();
+  openDetail(recipeIdx, search);
+}
+
+function setActiveSuggestion(i){
+  const items = searchSuggestions.querySelectorAll('.suggestion-item');
+  items.forEach(el => el.classList.remove('active'));
+  items.forEach(el => el.setAttribute('aria-selected', 'false'));
+  if(i >= 0 && i < items.length){
+    items[i].classList.add('active');
+    items[i].setAttribute('aria-selected', 'true');
+    items[i].scrollIntoView({ block: 'nearest' });
+    search.setAttribute('aria-activedescendant', `suggestion-${i}`);
+  } else {
+    search.removeAttribute('aria-activedescendant');
+  }
+  activeSuggestionIndex = i;
+}
+
 search.addEventListener('input', () => {
   updateSearchClearVisibility();
   renderGrid();
+  renderSuggestions();
 });
+search.addEventListener('keydown', (e) => {
+  if(!searchSuggestions.classList.contains('open')) return;
+  if(e.key === 'ArrowDown'){
+    e.preventDefault();
+    setActiveSuggestion(Math.min(activeSuggestionIndex + 1, currentSuggestions.length - 1));
+  } else if(e.key === 'ArrowUp'){
+    e.preventDefault();
+    setActiveSuggestion(Math.max(activeSuggestionIndex - 1, 0));
+  } else if(e.key === 'Enter'){
+    if(activeSuggestionIndex >= 0 && currentSuggestions[activeSuggestionIndex]){
+      e.preventDefault();
+      jumpToSuggestion(currentSuggestions[activeSuggestionIndex].idx);
+    }
+  } else if(e.key === 'Escape'){
+    closeSuggestions();
+  }
+});
+search.addEventListener('blur', () => {
+  // Small delay so a suggestion's mousedown handler (above) still fires first
+  setTimeout(closeSuggestions, 120);
+});
+search.addEventListener('focus', () => {
+  if(search.value.trim()) renderSuggestions();
+});
+
 searchClearBtn.addEventListener('click', () => {
   search.value = '';
   updateSearchClearVisibility();
   renderGrid();
+  closeSuggestions();
   search.focus();
 });
 
@@ -2563,6 +2780,66 @@ main{
 .search-clear-btn:focus-visible{
   outline: 2px solid var(--brass);
   outline-offset: 1px;
+}
+
+.search-suggestions{
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--stone-light);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 20;
+  display: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.search-suggestions.open{
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+.suggestion-item{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+.suggestion-item:hover,
+.suggestion-item.active{
+  background: rgba(184,173,127,0.14);
+}
+.suggestion-title{
+  color: var(--stone-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.suggestion-title mark{
+  background: none;
+  color: var(--brass-dark);
+  font-weight: 600;
+}
+.suggestion-cat{
+  flex: 0 0 auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--stone-mid);
 }
 
 .filters{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -3337,6 +3614,39 @@ main{
   0%{ color: var(--brass-dark); }
   100%{ color: inherit; }
 }
+.ingredient-qty{
+  display: inline-block;
+  color: var(--brass-dark);
+  border-bottom: 1px dashed rgba(184,173,127,0.5);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.ingredient-qty:hover,
+.ingredient-qty:focus-visible{
+  background: rgba(184,173,127,0.16);
+  color: var(--brass);
+  outline: none;
+}
+.check-item.checked .ingredient-qty{
+  color: inherit;
+  border-bottom-color: transparent;
+  cursor: default;
+  pointer-events: none;
+}
+.ingredient-qty-input{
+  font-family: 'Inter', sans-serif;
+  font-size: inherit;
+  color: var(--brass);
+  background: var(--marble);
+  border: 1px solid var(--brass);
+  border-radius: 4px;
+  width: 3.4em;
+  padding: 0 4px;
+  outline: none;
+}
+.ingredient-rest{ }
 .step-num{
   flex: 0 0 auto;
   color: var(--brass-dark);
