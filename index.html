@@ -1950,7 +1950,7 @@ function openDetail(idx, triggerEl){
             <button class="scale-reset-btn" id="scaleResetBtn" type="button">Reset</button>
           </div>
         </div>
-        <input type="range" id="scaleSlider" class="scale-slider" min="0.25" max="4" step="0.05" value="1" aria-label="Scale recipe amounts">
+        <input type="range" id="scaleSlider" class="scale-slider" min="0.25" max="10" step="0.05" value="1" aria-label="Scale recipe amounts">
       </div>
       <div class="progress-row">
         <span id="progressIndicator" class="progress-indicator"></span>
@@ -2011,7 +2011,7 @@ function openDetail(idx, triggerEl){
   });
 
   const SCALE_MIN = 0.25;
-  const SCALE_MAX = 4;
+  const SCALE_MAX = 10;
 
   // Recomputes state.scale so that a single ingredient's typed amount becomes
   // the new target, then re-renders everything the same way the slider does -
